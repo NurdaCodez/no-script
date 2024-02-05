@@ -1,6 +1,6 @@
 provider "google" {
   project = var.project
-  credentials = file("/tmp/credentials.json")
+  # credentials = file("./cred.json")
 }
 
 terraform {
@@ -13,7 +13,7 @@ terraform {
 
 resource "google_sql_database_instance" "instance1" {
   name             = var.promote_to_new_primary ? "new-primary" : "old-primary"
-  region               = var.swap-region ? "us-east4" : "us-central1"
+  region               = var.promote_to_new_primary ? "us-east4" : "us-central1"
   database_version     = "POSTGRES_14"
   settings {
     tier = "db-f1-micro"
@@ -46,9 +46,9 @@ resource "google_sql_user" "user" {
 
 
 resource "google_sql_database_instance" "instance2" {
-  name             = var.promote_to_new_primary ? "old-primary" : "new-primary"
+  name             = var.promote_to_new_primary ? "old-primary${var.instance_name}" : "new-primary"
   master_instance_name = google_sql_database_instance.instance1.name
-  region               = var.swap-region ? "us-central1" : "us-east1"
+  region               = var.promote_to_new_primary ? "us-central1" : "us-east1"
   database_version     = "POSTGRES_14"
 
   replica_configuration {
@@ -133,7 +133,7 @@ lifecycle {
   ignore_changes = all
 }
 
-depends_on = [ google_sql_database_instance.instance1 ]
+depends_on = [ google_sql_database_instance.instance1, google_sql_database_instance.instance2 ]
 
 }
 
@@ -150,54 +150,34 @@ resource "null_resource" "configure_vm" {
     destination = "/tmp/credentials.json"
   }
 
-provisioner "remote-exec" {
-  inline = [
-    "sudo snap install terraform --classic",
-    "terraform --help",
-    "gcloud auth login --cred-file=/tmp/credentials.json",
-    "git clone https://github.com/NurdaCodez/no-script.git",
-    "terraform init",
-    # For terraform plan
-    "terraform plan -var='promote_to_new_primary=true' -var='swap-region=true'",
-    # For terraform apply
-    "terraform apply -var='promote_to_new_primary=true' -var='swap-region=true'",
-    #state rm
-    "terraform state rm google_sql_database_instance.instance2",
-    "terraform state rm google_sql_database_instance.instance1",
-    "terraform state rm google_sql_database.db",
-    "terraform state rm google_sql_user.user",
-    #state import
-    "terraform import google_sql_database_instance.instance1 playground-s-11-76fcabeb/new-primary",
-    "terraform import google_sql_database.db playground-s-11-76fcabeb/new-primary/test-db",
-    "terraform import google_sql_user.user playground-s-11-76fcabeb/new-primary/test-user"
-  ]
-}
+    provisioner "remote-exec" {
+      inline = [
+        "sudo snap install terraform --classic",
+        "terraform --help",
+        "gcloud auth login --cred-file=/tmp/credentials.json",
+        "gcloud sql instances promote-replica new-primary --project=playground-s-11-76fcabeb",
+        "git clone https://github.com/NurdaCodez/no-script.git",
+        "cd no-script",
+#credentials
+        "export GOOGLE_APPLICATION_CREDENTIALS=/tmp/credentials.json",
+#init        
+        "terraform init",
+#state rm 
+        "terraform state rm google_sql_database_instance.instance2",
+        "terraform state rm google_sql_database_instance.instance1",
+        "terraform state rm google_sql_database.db",
+        "terraform state rm google_sql_user.user",
+#state import  
+        "terraform import google_sql_database_instance.instance1 playground-s-11-76fcabeb/new-primary",
+        "terraform import google_sql_database.db playground-s-11-76fcabeb/new-primary/test-db",
+        "terraform import google_sql_user.user playground-s-11-76fcabeb/new-primary/test-user",
+#plan and apply        
+        "terraform plan -var='promote_to_new_primary=true'",
+        "terraform apply -var='promote_to_new_primary=true'",
 
+      ]
     }
-
-data "google_compute_instance" "gce" {
-  name = "default"
-  zone = google_compute_instance.default.zone
-}
-
-data "google_iam_policy" "admin" {
-  binding {
-    role    = "roles/storage.admin"
-    members = ["serviceAccount:${google_compute_instance.default.service_account[0].email}"]
-  }
-}
-
- resource "google_service_account" "default" {
-   account_id   = "sa-gce"
-   project = var.project
-   display_name = "Service Account"
- }
-
-resource "google_project_iam_policy" "project" {
-  project     = google_compute_instance.default.project
-  policy_data = data.google_iam_policy.admin.policy_data
-}
-
+    }
 
 resource "google_compute_address" "static" {
   name = "reserved-ip"
@@ -206,9 +186,35 @@ resource "google_compute_address" "static" {
   address_type = "EXTERNAL"   
 }
 
-output "rsa" {
-value = tls_private_key.ssh.public_key_pem  
+resource "google_service_account" "default" {
+  account_id   = "sa-gce"
+  project = var.project
+  display_name = "Service Account"
 }
+
+
+
+
+# data "google_compute_instance" "gce" {
+#   name = "default"
+#   zone = google_compute_instance.default.zone
+# }
+
+# data "google_iam_policy" "admin" {
+#   binding {
+#     role    = "roles/storage.admin"
+#     members = ["serviceAccount:${google_compute_instance.default.service_account[0].email}"]
+#   }
+# }
+
+
+
+# resource "google_project_iam_policy" "project" {
+#   project     = google_compute_instance.default.project
+#   policy_data = data.google_iam_policy.admin.policy_data
+# }
+
+
 
 # output "gce_sa" {
 #   value = data.google_compute_instance.gce.service_account[0].email
