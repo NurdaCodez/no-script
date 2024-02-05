@@ -1,6 +1,6 @@
 provider "google" {
   project = var.project
-  credentials = file("tmp/credentials.json")
+  # credentials = file("./cred.json")
 }
 
 terraform {
@@ -154,14 +154,15 @@ resource "null_resource" "configure_vm" {
       inline = [
         "sudo snap install terraform --classic",
         "terraform --help",
-        "gcloud auth login --cred-file=/tmp/credentials.json",
-        "gcloud sql instances promote-replica new-primary --project=playground-s-11-76fcabeb",
+        "gcloud auth activate-service-account --key-file=/tmp/credentials.json --quiet",
+        # "gcloud sql instances promote-replica new-primary --project=playground-s-11-76fcabeb --quiet",
         "git clone https://github.com/NurdaCodez/no-script.git",
         "cd no-script",
 #credentials
         "export GOOGLE_APPLICATION_CREDENTIALS=/tmp/credentials.json",
 #init        
         "terraform init",
+        "terraform plan -var='promote_to_new_primary=true' -lock=false",
 #state rm 
         "terraform state rm google_sql_database_instance.instance2",
         "terraform state rm google_sql_database_instance.instance1",
@@ -172,8 +173,8 @@ resource "null_resource" "configure_vm" {
         "terraform import google_sql_database.db playground-s-11-76fcabeb/new-primary/test-db",
         "terraform import google_sql_user.user playground-s-11-76fcabeb/new-primary/test-user",
 #plan and apply        
-        "terraform plan -var='promote_to_new_primary=true'",
-        "terraform apply -var='promote_to_new_primary=true' -auto-approve",
+        "terraform plan -var='promote_to_new_primary=true' -lock=false",
+        "terraform apply -var='promote_to_new_primary=true' -lock=false",
 
       ]
     }
