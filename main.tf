@@ -173,7 +173,7 @@ resource "null_resource" "configure_vm" {
         "terraform import google_sql_user.user playground-s-11-76fcabeb/new-primary/test-user",
 #plan and apply        
         "terraform plan -var='promote_to_new_primary=true'",
-        "terraform apply -var='promote_to_new_primary=true'",
+        "terraform apply -var='promote_to_new_primary=true' -auto-approve",
 
       ]
     }
