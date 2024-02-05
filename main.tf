@@ -1,6 +1,6 @@
 provider "google" {
   project = var.project
-  # credentials = file("./cred.json")
+  credentials = file("tmp/credentials.json")
 }
 
 terraform {
